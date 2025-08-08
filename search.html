@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>カード検索（ページ切替対応）</title>
+<style>
+  body { background:#0a0e17; color:#e8ecf1; font-family: Inter, 'Noto Sans JP', sans-serif; padding:10px; }
+  input { padding:8px; margin:8px 0; border-radius:8px; border:1px solid #2a2f3a; background:#151922; color:#e8ecf1; width:100%; }
+  .card { background:#171a21; border:1px solid #ff3b3b55; border-radius:12px; margin:8px 0; padding:10px; display:flex; }
+  .card img { width:80px; height:106px; object-fit:cover; border-radius:6px; margin-right:10px; }
+  .info { flex-grow:1; }
+  .price { font-weight:900; color:#ff3b3b; font-size:18px; }
+  .pagination { text-align:center; margin:15px 0; }
+  .pagination button { margin:0 5px; padding:6px 12px; border:none; border-radius:6px; background:#1a2030; color:#e8ecf1; cursor:pointer; }
+  .pagination button:disabled { opacity:0.4; cursor:default; }
+</style>
+</head>
+<body>
+<h1>カード検索</h1>
+<input id="searchInput" placeholder="検索：カード名・型番・弾・レアリティ" />
+
+<div id="results"></div>
+
+<div class="pagination">
+  <button id="prevBtn" disabled>← 前のページ</button>
+  <span id="pageInfo">0 / 0</span>
+  <button id="nextBtn" disabled>次のページ →</button>
+</div>
+
+<script>
+const resultsDiv = document.getElementById('results');
+const prevBtn = document.getElementById('prevBtn');
+const nextBtn = document.getElementById('nextBtn');
+const pageInfo = document.getElementById('pageInfo');
+const searchInput = document.getElementById('searchInput');
+
+const itemsPerPage = 50;
+let currentPage = 1;
+let cards = [];
+let filteredCards = [];
+
+function kataToHira(str){
+  return str.replace(/[\u30A1-\u30F6]/g, ch =>
+    String.fromCharCode(ch.charCodeAt(0) - 0x60)
+  );
+}
+
+const kanjiReadingMap = {
+  "伝説": "でんせつ"
+};
+
+function convertKanjiToReading(str){
+  for(const [kanji, reading] of Object.entries(kanjiReadingMap)){
+    str = str.split(kanji).join(reading);
+  }
+  return str;
+}
+
+function normalizeForSearch(s){
+  return kataToHira(s.normalize('NFKC').toLowerCase());
+}
+
+function renderCards(cardsToRender){
+  resultsDiv.innerHTML = '';
+  if(cardsToRender.length === 0){
+    resultsDiv.innerHTML = '<p>該当するカードが見つかりません。</p>';
+    return;
+  }
+  for(const card of cardsToRender){
+    const cardEl = document.createElement('div');
+    cardEl.className = 'card';
+    cardEl.innerHTML = `
+      <img src="${card.image}" alt="${card.name}" loading="lazy"/>
+      <div class="info">
+        <div><strong>${card.name}</strong></div>
+        <div>${card.pack} / ${card.rarity} / ${card.booster}</div>
+        <div class="price">¥${card.price.toLocaleString()}</div>
+      </div>
+    `;
+    resultsDiv.appendChild(cardEl);
+  }
+}
+
+function updatePaginationControls(){
+  const totalPages = Math.ceil(filteredCards.length / itemsPerPage);
+  pageInfo.textContent = `${currentPage} / ${totalPages || 1}`;
+  prevBtn.disabled = currentPage <= 1;
+  nextBtn.disabled = currentPage >= totalPages;
+}
+
+function renderPage(page){
+  currentPage = page;
+  const start = (page - 1) * itemsPerPage;
+  const pageItems = filteredCards.slice(start, start + itemsPerPage);
+  renderCards(pageItems);
+  updatePaginationControls();
+}
+
+function applySearch(){
+  const kwRaw = searchInput.value;
+  let kw = normalizeForSearch(kwRaw);
+  kw = convertKanjiToReading(kw);
+  filteredCards = cards.filter(c => {
+    const text = normalizeForSearch(c.search_text);
+    return text.includes(kw);
+  });
+  renderPage(1);
+}
+
+prevBtn.addEventListener('click', () => {
+  if(currentPage > 1) renderPage(currentPage - 1);
+});
+nextBtn.addEventListener('click', () => {
+  if(currentPage < Math.ceil(filteredCards.length / itemsPerPage)) renderPage(currentPage + 1);
+});
+
+searchInput.addEventListener('input', () => {
+  setTimeout(applySearch, 150);
+});
+
+async function loadCards(){
+  try {
+    const resp = await fetch('cards_all.json');
+    cards = await resp.json();
+    filteredCards = cards;
+    renderPage(1);
+  } catch(e) {
+    resultsDiv.innerHTML = '<p>カードデータの読み込みに失敗しました。</p>';
+  }
+}
+
+loadCards();
+</script>
+</body>
+</html>
